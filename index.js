@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 
 // Mock storage - in production, you would use a database
-const users = {};
+let users = {};
 
 // Helper function to save users to a file (login.json)
 const saveUsersToFile = () => {
@@ -19,10 +19,12 @@ const saveUsersToFile = () => {
 app.post('/signup', (req, res) => {
   const { username, password } = req.body;
 
+  // Check if user already exists
   if (users[username]) {
     return res.status(400).json({ message: 'Username already exists!' });
   }
 
+  // Hash the password
   const hashedPassword = bcrypt.hashSync(password, 10);
   users[username] = { password: hashedPassword };
   saveUsersToFile();
@@ -34,10 +36,12 @@ app.post('/signup', (req, res) => {
 app.post('/signin', (req, res) => {
   const { username, password } = req.body;
 
+  // Check if user exists
   if (!users[username]) {
     return res.status(400).json({ message: 'Username does not exist!' });
   }
 
+  // Check if password is correct
   const isValid = bcrypt.compareSync(password, users[username].password);
   if (!isValid) {
     return res.status(400).json({ message: 'Invalid password!' });
