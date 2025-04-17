@@ -1,3 +1,79 @@
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const fs = require("fs");
+const path = require("path");
+const app = express();
+const PORT = process.env.PORT || 3000;
+require("dotenv").config();
+
+app.use(express.json());
+
+const USERS_FILE = path.join(__dirname, "login.json"); // Path to save user data
+
+// Helper to read users data from login.json
+function readUsersData() {
+  if (fs.existsSync(USERS_FILE)) {
+    return JSON.parse(fs.readFileSync(USERS_FILE));
+  }
+  return {};
+}
+
+// Helper to save users data to login.json
+function saveUsersData(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+// POST /signup: Create a new account
+app.post("/signup", (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password are required." });
+  }
+
+  const users = readUsersData();
+
+  if (users[username]) {
+    return res.status(400).json({ message: "Username already exists." });
+  }
+
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  users[username] = { passwordHash: hashedPassword, cookies: {} };
+
+  saveUsersData(users);
+  res.status(201).json({ message: "Account created!" });
+});
+
+// POST /signin: Log in an existing user
+app.post("/signin", (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password are required." });
+  }
+
+  const users = readUsersData();
+
+  const user = users[username];
+  if (!user) {
+    return res.status(400).json({ message: "Invalid username or password." });
+  }
+
+  const passwordValid = bcrypt.compareSync(password, user.passwordHash);
+  if (!passwordValid) {
+    return res.status(400).json({ message: "Invalid username or password." });
+  }
+
+  res.status(200).json({ message: "Login successful!" });
+});
+
+// Optional root page
+app.get("/", (req, res) => {
+  res.send("✅ Backend is running.");
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+});
 // index.js (complete working backend with signup/signin)
 const express = require("express");
 const axios = require("axios");
