@@ -1,44 +1,61 @@
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors"); // ✅ NEW LINE
-require("dotenv").config();
+const crypto = require("crypto");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Hash password
+function hashPassword(password) {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
 
-app.use(cors()); // ✅ NEW LINE to enable CORS
-app.use(express.json());
+// POST /create-user
+app.post("/create-user", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
+  }
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const REPO = "Loadbit6/shared-auth";
-const FILE_PATH = "login.json";
-const BRANCH = "main";
-
-// GET /data → returns the contents of login.json
-app.get("/data", async (req, res) => {
   try {
+    // Get existing data
     const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
-    const response = await axios.get(url, {
+    const getResponse = await axios.get(url, {
       headers: {
         Authorization: `Bearer ${GITHUB_TOKEN}`,
         Accept: "application/vnd.github.v3.raw"
       }
     });
 
-    res.json(response.data);
-  } catch (error) {
-    console.error("GitHub Fetch Error:", error.response?.data || error.message);
-    res.status(500).json({
-      error: "Failed to fetch data",
-      details: error.response?.data || error.message
+    let data = getResponse.data;
+    const users = data.users || {};
+
+    if (users[username]) {
+      return res.status(409).json({ error: "User already exists" });
+    }
+
+    users[username] = {
+      passwordHash: hashPassword(password),
+      cookies: {}
+    };
+
+    const updatedContent = {
+      users
+    };
+
+    const newContent = Buffer.from(JSON.stringify(updatedContent, null, 2)).toString("base64");
+
+    await axios.put(url, {
+      message: `Add new user ${username}`,
+      content: newContent,
+      sha: getResponse.headers.etag?.replace(/W\//, "").replace(/"/g, "") || "", // fallback if SHA is missing
+      branch: BRANCH
+    }, {
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        Accept: "application/vnd.github+json"
+      }
     });
+
+    res.json({ success: true, message: `User ${username} created` });
+
+  } catch (error) {
+    console.error("Create User Error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to create user", details: error.message });
   }
-});
-
-app.get("/", (req, res) => {
-  res.send("✅ Backend running. Go to /data to fetch login.json.");
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server is live on port ${PORT}`);
 });
