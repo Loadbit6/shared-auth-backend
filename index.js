@@ -1,72 +1,107 @@
-const express = require('express');
-const axios = require('axios');
-const fs = require('fs');
+const express = require("express");
+const axios = require("axios");
+const crypto = require("crypto");
 const app = express();
-const PORT = process.env.PORT || 3000;
+require("dotenv").config();
 
-require('dotenv').config();
 app.use(express.json());
 
-// GitHub repository settings
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const REPO = 'Loadbit6/shared-auth';
-const FILE_PATH = 'login.json';
-const BRANCH = 'main';
+const REPO = "Loadbit6/shared-auth";
+const FILE_PATH = "login.json";
+const BRANCH = "main";
 
-// Verify server is running
-app.get('/', (req, res) => {
-  console.log('Received a GET request to the root route');
-  res.send('Backend is running. Go to /login or /signup for API requests.');
-});
+const getFileSHA = async () => {
+  const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+  const response = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github.v3+json",
+    },
+  });
+  return response.data.sha;
+};
 
-// Handle login request
-app.post('/login', async (req, res) => {
-  console.log('Received login request');
-  const { username, passwordHash } = req.body;
+const readData = async () => {
+  const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+  const response = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github.v3.raw",
+    },
+  });
+  return typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+};
+
+const writeData = async (data) => {
+  const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+  const content = Buffer.from(JSON.stringify(data, null, 2)).toString("base64");
+  const sha = await getFileSHA();
+  await axios.put(url, {
+    message: "Update user data",
+    content,
+    sha,
+    branch: BRANCH,
+  }, {
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github.v3+json",
+    },
+  });
+};
+
+// 🔐 Hashing
+const hash = (str) => crypto.createHash("sha256").update(str).digest("hex");
+
+// 📤 Signup
+app.post("/signup", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: "Missing fields" });
 
   try {
-    const users = await getFileContents();
-    if (users[username] && users[username].passwordHash === passwordHash) {
-      res.json({ success: true, message: `Welcome, ${username}!` });
-    } else {
-      res.status(401).json({ success: false, message: 'Invalid username or password' });
-    }
-  } catch (error) {
-    console.error('Error during login:', error);
-    res.status(500).json({ success: false, message: 'Failed to process login' });
-  }
-});
+    const data = await readData();
+    if (data.users?.[username]) return res.status(409).json({ error: "User exists" });
 
-// Handle signup request
-app.post('/signup', async (req, res) => {
-  console.log('Received signup request');
-  const { username, passwordHash } = req.body;
-
-  try {
-    const users = await getFileContents();
-
-    // Check if the username already exists
-    if (users[username]) {
-      return res.status(400).json({ success: false, message: 'Username already exists' });
-    }
-
-    // Add new user to the data
-    users[username] = {
-      passwordHash,
-      cookies: {}, // Initialize cookies object
+    data.users = data.users || {};
+    data.users[username] = {
+      passwordHash: hash(password),
+      cookies: {},
     };
 
-    // Update the GitHub file with the new user data
-    await updateFile(users);
-
-    res.json({ success: true, message: `Account created for ${username}!` });
-  } catch (error) {
-    console.error('Error during signup:', error);
-    res.status(500).json({ success: false, message: 'Failed to create account' });
+    await writeData(data);
+    res.json({ success: true, message: "Account created" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Signup failed", details: err.message });
   }
 });
 
-// Start the server
+// 🔓 Signin
+app.post("/signin", async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const data = await readData();
+    const user = data.users?.[username];
+
+    if (!user || user.passwordHash !== hash(password)) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    res.json({
+      success: true,
+      cookies: user.cookies || {},
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Signin failed", details: err.message });
+  }
+});
+
+// 🚀 Status
+app.get("/", (req, res) => {
+  res.send("✅ Shared Auth Backend Running");
+});
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
