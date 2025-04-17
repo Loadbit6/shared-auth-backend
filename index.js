@@ -1,119 +1,78 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const bodyParser = require('body-parser');
-const fs = require('fs');
-const app = express();
-const PORT = process.env.PORT || 3000;
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const bodyParser = require("body-parser");
 const fs = require("fs");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(bodyParser.json());
+app.use(express.json());
 
-// Mock storage - in production, you would use a database
-let users = {};
+// Simulating data storage as JSON file
+const FILE_PATH = './login.json';
 
-// Helper function to save users to a file (login.json)
-const saveUsersToFile = () => {
-  fs.writeFileSync("login.json", JSON.stringify(users, null, 2));
-};
+// Read user data from JSON file
+function getUserData() {
+  try {
+    const data = fs.readFileSync(FILE_PATH, 'utf8');
+    return JSON.parse(data).users || {};
+  } catch (err) {
+    console.error("Error reading user data:", err);
+    return {};
+  }
+}
 
-// Signup route
-app.post("/signup", (req, res) => {
+// Save user data to JSON file
+function saveUserData(users) {
+  try {
+    const data = JSON.stringify({ users }, null, 2);
+    fs.writeFileSync(FILE_PATH, data, 'utf8');
+  } catch (err) {
+    console.error("Error saving user data:", err);
+  }
+}
+
+// /data endpoint to handle both signup and login
+app.post("/data", async (req, res) => {
   const { username, password } = req.body;
 
-  // Check if user already exists
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password are required!" });
+  }
+
+  const users = getUserData();
+
+  // Check if user exists and handle login or signup
   if (users[username]) {
-    return res.status(400).json({ message: "Username already exists!" });
+    // User exists, handle login (check password)
+    const isValid = bcrypt.compareSync(password, users[username].passwordHash);
+    if (isValid) {
+      return res.status(200).json({ message: "Login successful!" });
+    } else {
+      return res.status(400).json({ message: "Invalid password!" });
+    }
+  } else {
+    // New user, handle signup (create account)
+    const hashedPassword = bcrypt.hashSync(password, 10); // Hash password
+
+    // Add new user to data
+    users[username] = {
+      passwordHash: hashedPassword,
+      cookies: {} // You can customize cookies data here if needed
+    };
+
+    saveUserData(users); // Save updated data
+
+    return res.status(201).json({ message: "Account created successfully!" });
   }
-
-  // Hash the password
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  users[username] = { password: hashedPassword };
-  saveUsersToFile();
-
-  res.status(201).json({ message: "Account created successfully!" });
 });
 
-// Signin route
-app.post("/signin", (req, res) => {
-  const { username, password } = req.body;
-
-  // Check if user exists
-  if (!users[username]) {
-    return res.status(400).json({ message: "Username does not exist!" });
+// Optionally, a GET endpoint to retrieve data (e.g., user details)
+app.get("/data", (req, res) => {
+  try {
+    const users = getUserData();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to retrieve data" });
   }
-
-  // Check if password is correct
-  const isValid = bcrypt.compareSync(password, users[username].password);
-  if (!isValid) {
-    return res.status(400).json({ message: "Invalid password!" });
-  }
-
-  res.status(200).json({ message: "Login successful!" });
-});
-
-// Basic route for testing
-app.get("/", (req, res) => {
-  res.send("Backend is running");
-});
-
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-app.use(bodyParser.json());
-
-// Mock storage - in production, you would use a database
-let users = {};
-
-// Helper function to save users to a file (login.json)
-const saveUsersToFile = () => {
-  fs.writeFileSync('login.json', JSON.stringify(users, null, 2));
-};
-
-// Register route
-app.post('/signup', (req, res) => {
-  const { username, password } = req.body;
-
-  // Check if user already exists
-  if (users[username]) {
-    return res.status(400).json({ message: 'Username already exists!' });
-  }
-
-  // Hash the password
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  users[username] = { password: hashedPassword };
-  saveUsersToFile();
-
-  res.status(201).json({ message: 'Account created successfully!' });
-});
-
-// Signin route
-app.post('/signin', (req, res) => {
-  const { username, password } = req.body;
-
-  // Check if user exists
-  if (!users[username]) {
-    return res.status(400).json({ message: 'Username does not exist!' });
-  }
-
-  // Check if password is correct
-  const isValid = bcrypt.compareSync(password, users[username].password);
-  if (!isValid) {
-    return res.status(400).json({ message: 'Invalid password!' });
-  }
-
-  res.status(200).json({ message: 'Login successful!' });
-});
-
-// Basic route for testing
-app.get('/', (req, res) => {
-  res.send('Backend is running');
 });
 
 // Start the server
