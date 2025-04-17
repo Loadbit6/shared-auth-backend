@@ -1,19 +1,19 @@
 const express = require("express");
 const axios = require("axios");
-const dotenv = require("dotenv");
-
-dotenv.config();
+const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+require("dotenv").config();
 app.use(express.json());
+app.use(cors()); // Enable CORS for cross-origin requests
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const REPO = "Loadbit6/shared-auth";
 const FILE_PATH = "login.json";
 const BRANCH = "main";
 
-// GET /data → Fetch JSON file from GitHub
+// GET /data → returns the contents of login.json
 app.get("/data", async (req, res) => {
   try {
     const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
@@ -24,16 +24,9 @@ app.get("/data", async (req, res) => {
       }
     });
 
-    let jsonData;
+    // response.data is already JSON, no need to parse
+    res.json(response.data);
 
-    // Parse if it's a string
-    if (typeof response.data === "string") {
-      jsonData = JSON.parse(response.data);
-    } else {
-      jsonData = response.data;
-    }
-
-    res.json(jsonData);
   } catch (error) {
     console.error("GitHub Fetch Error:", error.response?.data || error.message);
     res.status(500).json({
@@ -43,11 +36,11 @@ app.get("/data", async (req, res) => {
   }
 });
 
-// Optional: root page
+// Optional root page
 app.get("/", (req, res) => {
-  res.send("✅ Backend is running. Visit /data to see login info.");
+  res.send("✅ Backend running. Go to /data to fetch login.json.");
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Server is live on port ${PORT}`);
 });
