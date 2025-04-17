@@ -1,9 +1,12 @@
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors"); // ✅ NEW LINE
+require("dotenv").config();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-require("dotenv").config();
+app.use(cors()); // ✅ NEW LINE to enable CORS
 app.use(express.json());
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -22,9 +25,7 @@ app.get("/data", async (req, res) => {
       }
     });
 
-    // response.data is already JSON, no need to parse
     res.json(response.data);
-
   } catch (error) {
     console.error("GitHub Fetch Error:", error.response?.data || error.message);
     res.status(500).json({
@@ -34,7 +35,6 @@ app.get("/data", async (req, res) => {
   }
 });
 
-// Optional root page
 app.get("/", (req, res) => {
   res.send("✅ Backend running. Go to /data to fetch login.json.");
 });
